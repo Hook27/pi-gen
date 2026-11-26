@@ -1,0 +1,11 @@
+[Unit]
+Description=CaPuZ: eenmalige opruiming na de eerste start
+After=LaunchWizard.service systemd-user-sessions.service
+ConditionPathExists=!/var/lib/capuz/firstboot-cleanup.done
+
+[Service]
+Type=oneshot
+ExecStart=/usr/lib/capuz/capuz-firstboot-cleanup
+
+[Install]
+WantedBy=multi-user.target

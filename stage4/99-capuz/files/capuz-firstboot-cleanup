@@ -1,0 +1,53 @@
+#!/bin/sh
+# CaPuZ: eenmalige opruiming nadat de M5Stack-installatiewizard (LaunchWizard)
+# klaar is. Doet automatisch wat op de eerste CaPuZ met de hand is gedaan:
+#  - opstarten zonder (onzichtbaar) bureaublad
+#  - Raspberry Pi-gebruikerswizard (userconfig) uit
+#  - restanten van de eerste-start-wizard opruimen
+#  - cloud-init uit (alleen nodig bij de allereerste start)
+set -u
+
+DONE=/var/lib/capuz/firstboot-cleanup.done
+[ -e "$DONE" ] && exit 0
+
+# LaunchWizard nog niet klaar? Dan volgende keer opnieuw proberen.
+if [ -e /var/lib/LaunchWizard/run-oobe ]; then
+    echo "capuz-cleanup: LaunchWizard nog niet afgerond, overslaan"
+    exit 0
+fi
+
+echo "capuz-cleanup: start"
+
+systemctl set-default multi-user.target
+systemctl disable userconfig.service 2>/dev/null || true
+
+# Bureaublad nu al stoppen (gebeurt na een herstart sowieso niet meer).
+systemctl stop lightdm.service 2>/dev/null || true
+
+if getent passwd rpi-first-boot-wizard >/dev/null 2>&1; then
+    userdel -r rpi-first-boot-wizard 2>/dev/null || userdel rpi-first-boot-wizard 2>/dev/null || true
+fi
+rm -f /etc/sudoers.d/010_wiz-nopasswd
+
+if [ -f /etc/ssh/sshd_config.d/rename_user.conf ]; then
+    mv /etc/ssh/sshd_config.d/rename_user.conf /etc/ssh/sshd_config.d/rename_user.conf.uit
+    systemctl reload ssh 2>/dev/null || true
+fi
+if [ -f /etc/lightdm/lightdm.conf.d/99-cardputerzero-firstboot.conf ]; then
+    mv /etc/lightdm/lightdm.conf.d/99-cardputerzero-firstboot.conf \
+       /etc/lightdm/lightdm.conf.d/99-cardputerzero-firstboot.conf.uit
+fi
+
+mkdir -p /etc/cloud
+touch /etc/cloud/cloud-init.disabled
+
+# Alleen als klaar markeren als de wizard-gebruiker echt weg is.
+if getent passwd rpi-first-boot-wizard >/dev/null 2>&1; then
+    echo "capuz-cleanup: wizard-gebruiker nog aanwezig, volgende start opnieuw"
+    exit 0
+fi
+
+mkdir -p /var/lib/capuz
+date -Iseconds > "$DONE"
+echo "capuz-cleanup: klaar"
+exit 0

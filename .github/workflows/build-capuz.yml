@@ -1,0 +1,104 @@
+name: Build CaPuZ image (arm64)
+
+# Eigen CaPuZ-image: het M5Stack CardputerZero-image (zelfde pi-gen-commit)
+# plus de slotstap stage4/99-capuz. Alleen handmatig starten.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build CaPuZ image
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 240
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Free disk space
+        run: |
+          sudo rm -rf /usr/local/lib/android /usr/share/dotnet /opt/ghc
+          df -h /
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y coreutils quilt parted debootstrap zerofree zip \
+            dosfstools libarchive-tools libcap2-bin grep rsync xz-utils file git curl bc \
+            gpg pigz xxd arch-test qemu-user-static kmod binfmt-support e2fsprogs
+
+      - name: Configure build
+        run: |
+          IMG_DATE=$(date +%Y-%m-%d)
+          cat > config <<CONFIG
+          IMG_NAME=capuz-trixie-arm64
+          IMG_FILENAME=${IMG_DATE}-capuz-trixie-arm64
+          ARCHIVE_FILENAME=${IMG_DATE}-capuz-trixie-arm64
+          RELEASE=trixie
+          DEPLOY_COMPRESSION=xz
+          TARGET_HOSTNAME=CaPuZ
+          FIRST_USER_NAME=pi
+          FIRST_USER_PASS=raspberry
+          ENABLE_SSH=1
+          LOCALE_DEFAULT=en_US.UTF-8
+          KEYBOARD_KEYMAP=us
+          KEYBOARD_LAYOUT="English (US)"
+          TIMEZONE_DEFAULT=Europe/Amsterdam
+          # 14.8 GiB fixed raw image (fits 16 GB cards), same as M5Stack
+          IMAGE_TOTAL_SIZE=15888023552
+          CONFIG
+          sed -i 's/^          //' config
+          cat config
+
+          # Geen lite-image (stage2) en geen full-image (stage5) exporteren.
+          touch stage2/SKIP_IMAGES
+          touch stage5/SKIP stage5/SKIP_IMAGES
+
+      - name: Build image
+        run: sudo GITHUB_TOKEN="${GITHUB_TOKEN}" XZ_DEFAULTS="-T0" ./build.sh
+        env:
+          # Alleen gebruikt om openbare releases van CardputerZero op te vragen
+          # (hogere API-limiet); komt niet in het image.
+          GITHUB_TOKEN: ${{ github.token }}
+
+      - name: Fix deploy permissions
+        run: sudo chown -R $(id -u):$(id -g) deploy/
+
+      - name: Find output image
+        id: image
+        run: |
+          find deploy/ -type f | sort
+          FILE=$(find deploy/ -type f -name "*.img.xz" ! -name "*-lite*" | head -1)
+          [ -n "$FILE" ] || { echo "Geen image gevonden"; exit 1; }
+          ls -lh "$FILE"
+          xz -dk "$FILE"
+          echo "path=$FILE" >> "$GITHUB_OUTPUT"
+          echo "raw=${FILE%.xz}" >> "$GITHUB_OUTPUT"
+          echo "name=$(basename "$FILE")" >> "$GITHUB_OUTPUT"
+
+      - name: Verify image contents (M5Stack checks)
+        run: |
+          set -o pipefail
+          sudo ./tools/verify-image.sh "${{ steps.image.outputs.raw }}" 2>&1 | \
+            tee deploy/image-verification.log
+
+      - name: Checksum
+        run: |
+          cd "$(dirname "${{ steps.image.outputs.path }}")"
+          sha256sum "${{ steps.image.outputs.name }}" > "${{ steps.image.outputs.name }}.sha256"
+          cat "${{ steps.image.outputs.name }}.sha256"
+
+      - name: Create release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TAG="capuz-$(date +%Y%m%d-%H%M%S)-${GITHUB_SHA::7}"
+          gh release create "$TAG" --prerelease \
+            --title "CaPuZ image $TAG" \
+            --notes "CaPuZ-image op basis van M5Stack pi-gen $(git rev-parse --short HEAD~0). Testversie." \
+            "${{ steps.image.outputs.path }}" \
+            "${{ steps.image.outputs.path }}.sha256" \
+            deploy/image-verification.log

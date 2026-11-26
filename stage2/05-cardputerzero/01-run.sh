@@ -15,10 +15,15 @@ apt-get install -y --no-install-recommends \
     device-tree-compiler \
     git
 
-# Always build the latest driver from the main branch.
+# CaPuZ: build a pinned driver commit instead of the latest main branch, so
+# rebuilds are reproducible. a3fd3e8 is the commit M5Stack's stable image
+# 20261119-094529-3b0e6f6 was built with (kernel 6.18.39, same pi-gen commit).
+DTOVERLAYS_COMMIT=a3fd3e83c0247e16e194e7e40f7fc1f5be933dd4
 rm -rf /tmp/dtoverlays
-git clone --depth=1 https://github.com/m5stack/m5stack-linux-dtoverlays.git \
-    /tmp/dtoverlays
+git init -q /tmp/dtoverlays
+git -C /tmp/dtoverlays remote add origin https://github.com/m5stack/m5stack-linux-dtoverlays.git
+git -C /tmp/dtoverlays fetch -q --depth=1 origin "$DTOVERLAYS_COMMIT"
+git -C /tmp/dtoverlays checkout -q FETCH_HEAD
 git -C /tmp/dtoverlays rev-parse HEAD \
     > /etc/cardputerzero-dtoverlays.commit
 
