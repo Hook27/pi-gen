@@ -1,6 +1,7 @@
 #!/bin/sh
-# CaPuZ: eenmalige opruiming nadat de M5Stack-installatiewizard (LaunchWizard)
-# klaar is. Doet automatisch wat op de eerste CaPuZ met de hand is gedaan:
+# CaPuZ: eenmalige opruiming zodra de M5Stack-installatiewizard (LaunchWizard)
+# klaar is; draait bij elke start vóór LaunchWizard tot het gelukt is (zie de
+# .service). Doet automatisch wat op de eerste CaPuZ met de hand is gedaan:
 #  - opstarten zonder (onzichtbaar) bureaublad
 #  - Raspberry Pi-gebruikerswizard (userconfig) uit
 #  - restanten van de eerste-start-wizard opruimen

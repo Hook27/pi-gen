@@ -1,6 +1,12 @@
 [Unit]
 Description=CaPuZ: eenmalige opruiming na de eerste start
-After=LaunchWizard.service systemd-user-sessions.service
+# Vóór de M5Stack-wizard (LaunchWizard): die kijkt bij elke start of er nog
+# resten van de Raspberry Pi-installatie zijn (autologin voor
+# rpi-first-boot-wizard + piwiz) en start dan opnieuw de installatiewizard.
+# Moet de wizard zelf nog draaien (run-oobe aanwezig), dan slaat het script
+# zich over en probeert het de volgende start opnieuw.
+After=systemd-user-sessions.service
+Before=LaunchWizard.service
 ConditionPathExists=!/var/lib/capuz/firstboot-cleanup.done
 
 [Service]

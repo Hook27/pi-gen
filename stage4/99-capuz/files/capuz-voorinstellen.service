@@ -11,6 +11,8 @@ RequiresMountsFor=/boot/firmware /home /var/lib
 
 [Service]
 Type=oneshot
+# Eén keer per start (zonder dit werd hij soms een tweede keer gestart).
+RemainAfterExit=yes
 ExecStart=/usr/lib/capuz/capuz-voorinstellen
 TimeoutStartSec=5min
 

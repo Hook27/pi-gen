@@ -2,7 +2,7 @@
 # CaPuZ: eigen slotstap bovenop het M5Stack CardputerZero-image.
 # Bevat GEEN geheimen: wachtwoord en wifi stel je bij de eerste start in met
 # de M5Stack-installatiewizard, of vooraf met capuz-instellingen.txt op de
-# opstartpartitie (zie 3d). Tailscale koppelt via dat bestand of later met
+# opstartpartitie (zie 3c). Tailscale koppelt via dat bestand of later met
 # `sudo tailscale up`.
 
 # 1. Volume echt toepassen (software-volume voor de ES8389).
@@ -37,12 +37,7 @@ install -d "${ROOTFS_DIR}/etc/systemd/system/userconfig.service.d"
 install -m 644 files/10-capuz-userconfig-nooit.conf \
     "${ROOTFS_DIR}/etc/systemd/system/userconfig.service.d/10-capuz-userconfig-nooit.conf"
 
-# 3c. Zodra de M5Stack-wizard klaar is meteen opruimen (scheelt een herstart).
-install -d "${ROOTFS_DIR}/etc/systemd/system/LaunchWizard.service.d"
-install -m 644 files/10-capuz-opruimen-na-wizard.conf \
-    "${ROOTFS_DIR}/etc/systemd/system/LaunchWizard.service.d/10-capuz-opruimen-na-wizard.conf"
-
-# 3d. Instellen zonder wizard: capuz-instellingen.txt op de opstartpartitie
+# 3c. Instellen zonder wizard: capuz-instellingen.txt op de opstartpartitie
 #     (voorbeeld staat ernaast). Wordt vóór de wizard ingelezen en gewist.
 install -m 755 files/capuz-voorinstellen \
     "${ROOTFS_DIR}/usr/lib/capuz/capuz-voorinstellen"

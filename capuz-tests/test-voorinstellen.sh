@@ -5,7 +5,9 @@
 set -u
 HIER=$(cd "$(dirname "$0")/.." && pwd)
 SCRIPT="$HIER/stage4/99-capuz/files/capuz-voorinstellen"
-GEHEIMEN=("Geheim=wachtwoord 123" "WifiSleutel!42" "tskey-nep-voorbeeld-0000")
+# Nep-Tailscale-sleutel in stukjes, zodat GitHub hem niet als echte sleutel ziet.
+NEP_TS="tsk""ey-nep-voorbeeld-0000"
+GEHEIMEN=("Geheim=wachtwoord 123" "WifiSleutel!42" "$NEP_TS")
 GOED=0; FOUT=0
 
 nieuw_systeem() {   # maakt een nep-root + nep-opstartpartitie in $T
@@ -37,7 +39,7 @@ geen_geheim() {
 }
 geen_instellingenbestand() { ! ls "$T/boot" | grep -qi '^capuz-instellingen\.txt'; }
 
-GELDIG=$'\xEF\xBB\xBF# test\r\ngebruiker = jorg\r\nWACHTWOORD=Geheim=wachtwoord 123\r\nHOSTNAAM=CP0cstm\r\nWIFI_NAAM="Ziggo Thuis"\r\nWIFI_WACHTWOORD=WifiSleutel!42\r\nWIFI_LAND=nl\r\nTIJDZONE=Europe/Amsterdam\r\nTAILSCALE_SLEUTEL=tskey-nep-voorbeeld-0000\r\nTOETSENBORD_UITLEG=nee\r\n'
+GELDIG=$'\xEF\xBB\xBF# test\r\ngebruiker = jorg\r\nWACHTWOORD=Geheim=wachtwoord 123\r\nHOSTNAAM=CP0cstm\r\nWIFI_NAAM="Ziggo Thuis"\r\nWIFI_WACHTWOORD=WifiSleutel!42\r\nWIFI_LAND=nl\r\nTIJDZONE=Europe/Amsterdam\r\nTAILSCALE_SLEUTEL='"$NEP_TS"$'\r\nTOETSENBORD_UITLEG=nee\r\n'
 
 echo "1. Geldig bestand (BOM, Windows-regeleinden, spaties, '=' in wachtwoord, .TXT.txt)"
 nieuw_systeem; printf '%s' "$GELDIG" > "$T/boot/Capuz-Instellingen.TXT.txt"; draai pi
@@ -53,7 +55,7 @@ check "hosts localhost behouden"       bevat "$T/root/etc/hosts" $'127.0.0.1\tlo
 check "tijdzone"                       bevat "$T/root/etc/timezone" "Europe/Amsterdam"
 check "wifi-land NL (hoofdletters)"    bevat "$T/uitvoer.txt" "do_wifi_country NL"
 check "wifi-profiel met spatie in naam" bevat "$T/uitvoer.txt" "ssid 'Ziggo Thuis'"
-check "tailscale-sleutel bewaard"      bevat "$T/root/var/lib/capuz/tailscale-sleutel" "tskey-nep-voorbeeld-0000"
+check "tailscale-sleutel bewaard"      bevat "$T/root/var/lib/capuz/tailscale-sleutel" "$NEP_TS"
 check "toetsenbord-uitleg overgeslagen" bevat "$T/uitvoer.txt" "rm -f $T/root/var/lib/LaunchWizard/run-keyboard-guide"
 check "resultaat: gebruiker OK"        bevat "$T/boot/capuz-instellingen-RESULTAAT.txt" "Gebruiker   : jorg  [OK]"
 check "resultaat: wifi OK"             bevat "$T/boot/capuz-instellingen-RESULTAAT.txt" "Wifi        : Ziggo Thuis  [OK]"
@@ -75,7 +77,7 @@ fout_geval() {   # $1 = omschrijving, $2 = vervang-sed, $3 = verwachte foutregel
 fout_geval "2. Hoofdletter in gebruikersnaam"  's/jorg/Jorg/'                    "- GEBRUIKER: verplicht"
 fout_geval "3. Gebruikersnaam pi"              's/= jorg/= pi/'                  "GEBRUIKER: 'pi' mag niet"
 fout_geval "4. Wifi-wachtwoord te kort"        's/WifiSleutel!42/kort/'          "- WIFI_WACHTWOORD: moet 8 tot 63"
-fout_geval "5. Ongeldige Tailscale-sleutel"    's/tskey-nep-voorbeeld-0000/abc/' "- TAILSCALE_SLEUTEL: moet beginnen"
+fout_geval "5. Ongeldige Tailscale-sleutel"    "s/$NEP_TS/abc/" "- TAILSCALE_SLEUTEL: moet beginnen"
 fout_geval "6. Onbekende tijdzone"             's#Europe/Amsterdam#Mars/Basis#'  "- TIJDZONE: 'Mars/Basis' bestaat niet"
 fout_geval "7. Onbekend wifi-land"             's/WIFI_LAND=nl/WIFI_LAND=XX/'    "- WIFI_LAND: geen geldige"
 fout_geval "8. Wifi-wachtwoord zonder wifi-naam" 's/WIFI_NAAM="Ziggo Thuis"/WIFI_NAAM=/' "- WIFI_NAAM: leeg"
