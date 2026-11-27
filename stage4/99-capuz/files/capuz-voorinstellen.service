@@ -1,0 +1,18 @@
+[Unit]
+Description=CaPuZ: instellingen uit capuz-instellingen.txt toepassen (vóór de wizard)
+# Heel vroeg draaien: vóór NetworkManager (wifi-profiel en wifi-land klaar
+# vóór de start), vóór gebruikerssessies (pi heeft dan nog geen processen) en
+# vóór de M5Stack-wizard (die ziet dan een ingesteld account).
+DefaultDependencies=no
+After=local-fs.target systemd-remount-fs.service
+Before=sysinit.target systemd-user-sessions.service LaunchWizard.service shutdown.target
+Conflicts=shutdown.target
+RequiresMountsFor=/boot/firmware /home /var/lib
+
+[Service]
+Type=oneshot
+ExecStart=/usr/lib/capuz/capuz-voorinstellen
+TimeoutStartSec=5min
+
+[Install]
+WantedBy=sysinit.target

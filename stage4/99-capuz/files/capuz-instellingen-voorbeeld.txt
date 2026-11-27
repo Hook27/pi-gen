@@ -1,0 +1,42 @@
+# CaPuZ-instellingen voor de eerste start
+# =======================================
+# Zo gebruik je dit bestand:
+#  1. Maak een kopie van dit bestand op deze kaart en noem die
+#     capuz-instellingen.txt
+#  2. Vul de kopie in met Kladblok en sla op.
+#  3. Zet de kaart in de CaPuZ en zet hem aan. De installatiewizard wordt
+#     dan overgeslagen; hij start een paar keer vanzelf opnieuw.
+#
+# Na het inlezen wordt capuz-instellingen.txt GEWIST (er staan wachtwoorden
+# in). De uitkomst staat daarna in capuz-instellingen-RESULTAAT.txt.
+# Geen capuz-instellingen.txt? Dan start gewoon de wizard van M5Stack.
+#
+# Schrijfwijze: NAAM=waarde, zonder spaties of aanhalingstekens om de waarde.
+# Regels die met # beginnen worden overgeslagen. Dit voorbeeld zelf wordt
+# nooit gebruikt; laat er geen wachtwoorden in staan.
+
+# Gebruikersnaam: kleine letters, cijfers en '-', begint met een letter.
+GEBRUIKER=
+
+# Wachtwoord voor die gebruiker (nodig voor sudo; SSH gaat met de sleutel
+# van de SP6).
+WACHTWOORD=
+
+# Naam van het apparaat: letters, cijfers en '-'.
+HOSTNAAM=
+
+# Wifi (de CaPuZ kent alleen 2,4 GHz). Laat beide leeg om wifi over te slaan.
+WIFI_NAAM=
+WIFI_WACHTWOORD=
+
+# Land voor wifi (twee letters) en tijdzone.
+WIFI_LAND=NL
+TIJDZONE=Europe/Amsterdam
+
+# Optioneel: eenmalige Tailscale-sleutel (begint met tskey-). Maak die aan in
+# de Tailscale-beheerpagina > Settings > Keys > Generate auth key, NIET
+# herbruikbaar. Leeg laten = later zelf koppelen met: sudo tailscale up
+TAILSCALE_SLEUTEL=
+
+# Toetsenbord-uitleg van M5Stack bij de eerste start tonen? ja of nee.
+TOETSENBORD_UITLEG=nee

@@ -1,0 +1,273 @@
+#!/bin/sh
+# CaPuZ: instellingen uit capuz-instellingen.txt (op de opstartpartitie)
+# toepassen VOORDAT de M5Stack-installatiewizard start.
+#
+# Hernoemt de fabrieksgebruiker "pi", zet wachtwoord, hostnaam, tijdzone,
+# wifi-land en wifi, en bewaart een eventuele Tailscale-sleutel voor
+# capuz-tailscale-koppelen. Daarna ziet de wizard een ingesteld account en
+# slaat hij zichzelf over (zijn eigen route voor Imager-kaarten): kaart
+# vergroten, herstarten, startmenu starten.
+#
+# Het instellingenbestand wordt na het inlezen altijd GEWIST (er staan
+# wachtwoorden in). De uitkomst, zonder geheimen, staat daarna in
+# capuz-instellingen-RESULTAAT.txt op de opstartpartitie.
+#
+# Alleen voor tests: CAPUZ_DROOG=1 voert niets aan het systeem uit maar toont
+# wat het zou doen; CAPUZ_BOOT en CAPUZ_ROOT verwijzen dan naar testmappen;
+# CAPUZ_TEST_EERSTE_GEBRUIKER doet alsof dat de gebruiker met UID 1000 is.
+set -u
+
+BOOT=${CAPUZ_BOOT:-/boot/firmware}
+R=${CAPUZ_ROOT:-}
+DROOG=${CAPUZ_DROOG:-0}
+RESULTAAT="$BOOT/capuz-instellingen-RESULTAAT.txt"
+STAAT="$R/var/lib/capuz"
+
+log() { echo "capuz-voorinstellen: $*"; }
+
+# Een droge test mag nooit het echte systeem raken.
+if [ "$DROOG" = 1 ] && [ -z "$R" ]; then
+    echo "capuz-voorinstellen: CAPUZ_DROOG=1 vereist CAPUZ_ROOT (testmap)" >&2
+    exit 2
+fi
+
+doe() {
+    if [ "$DROOG" = 1 ]; then
+        echo "DROOG: $*"
+        return 0
+    fi
+    "$@"
+}
+
+# Wis een bestand zo goed als kan (overschrijven, dan verwijderen).
+wis() {
+    [ -e "$1" ] || return 0
+    shred -n 1 -z -u "$1" 2>/dev/null || rm -f "$1"
+    sync
+}
+
+resultaat() { printf '%s\r\n' "$*" >> "$RESULTAAT"; }
+
+# --- 1. Instellingenbestand zoeken (ook capuz-instellingen.txt.txt, en
+#        ongeacht hoofdletters, want Windows verbergt vaak de extensie).
+BESTAND=""
+for f in "$BOOT"/* ; do
+    [ -f "$f" ] || continue
+    naam=$(basename "$f" | tr 'A-Z' 'a-z')
+    case "$naam" in
+        capuz-instellingen.txt|capuz-instellingen.txt.txt) BESTAND="$f"; break ;;
+    esac
+done
+[ -n "$BESTAND" ] || exit 0
+
+# --- 2. Alleen op een kaart in fabrieksstand. Anders: bestand wissen.
+if [ -n "${CAPUZ_TEST_EERSTE_GEBRUIKER:-}" ]; then
+    EERSTE=$CAPUZ_TEST_EERSTE_GEBRUIKER
+else
+    EERSTE=$(getent passwd 1000 | cut -d: -f1)
+fi
+if [ "$EERSTE" != "pi" ] || [ ! -e "$R/var/lib/LaunchWizard/run-oobe" ]; then
+    wis "$BESTAND"
+    : > "$RESULTAAT"
+    resultaat "CaPuZ-instellingen: GENEGEERD op $(date '+%Y-%m-%d %H:%M')"
+    resultaat "Dit apparaat was al ingesteld; het instellingenbestand is gewist."
+    log "apparaat al ingesteld, bestand gewist"
+    exit 0
+fi
+
+# --- 3. Inlezen. Nooit uitvoeren ("source"): alleen NAAM=waarde-regels.
+lees() {
+    sed -e '1s/^\xEF\xBB\xBF//' -e 's/\r$//' "$BESTAND" | awk -v sleutel="$1" '
+        /^[[:space:]]*#/ || !/=/ { next }
+        {
+            i = index($0, "=")
+            k = substr($0, 1, i - 1); v = substr($0, i + 1)
+            gsub(/^[[:space:]]+|[[:space:]]+$/, "", k)
+            gsub(/^[[:space:]]+|[[:space:]]+$/, "", v)
+            if (length(v) >= 2 && substr(v, 1, 1) == "\"" && substr(v, length(v), 1) == "\"")
+                v = substr(v, 2, length(v) - 2)
+            if (toupper(k) == sleutel) w = v
+        }
+        END { printf "%s", w }'
+}
+
+GEBRUIKER=$(lees GEBRUIKER)
+WACHTWOORD=$(lees WACHTWOORD)
+HOSTNAAM=$(lees HOSTNAAM)
+WIFI_NAAM=$(lees WIFI_NAAM)
+WIFI_WACHTWOORD=$(lees WIFI_WACHTWOORD)
+WIFI_LAND=$(lees WIFI_LAND)
+TIJDZONE=$(lees TIJDZONE)
+TS_SLEUTEL=$(lees TAILSCALE_SLEUTEL)
+UITLEG=$(lees TOETSENBORD_UITLEG)
+[ -n "$WIFI_LAND" ] || WIFI_LAND=NL
+[ -n "$TIJDZONE" ] || TIJDZONE=Europe/Amsterdam
+[ -n "$UITLEG" ] || UITLEG=nee
+WIFI_LAND=$(printf '%s' "$WIFI_LAND" | tr 'a-z' 'A-Z')
+UITLEG=$(printf '%s' "$UITLEG" | tr 'A-Z' 'a-z')
+
+# Geheimen staan nu alleen nog in het geheugen: bestand meteen wissen.
+wis "$BESTAND"
+
+# --- 4. Controleren. Bij een fout: niets veranderen, de wizard start dan
+#        gewoon, en de fout(en) komen in het resultaatbestand.
+FOUTEN=""
+fout() { FOUTEN="${FOUTEN}- $*
+"; }
+
+if ! printf '%s' "$GEBRUIKER" | grep -Eq '^[a-z][a-z0-9-]{0,31}$'; then
+    fout "GEBRUIKER: verplicht; alleen kleine letters, cijfers en '-', begint met een letter (max. 32)."
+elif [ "$GEBRUIKER" = root ] || [ "$GEBRUIKER" = pi ]; then
+    fout "GEBRUIKER: '$GEBRUIKER' mag niet, kies een eigen naam."
+elif [ "$DROOG" != 1 ] && getent passwd "$GEBRUIKER" >/dev/null; then
+    fout "GEBRUIKER: '$GEBRUIKER' bestaat al op dit systeem."
+fi
+[ -n "$WACHTWOORD" ] || fout "WACHTWOORD: verplicht."
+if ! printf '%s' "$HOSTNAAM" | grep -Eq '^[A-Za-z0-9]([A-Za-z0-9-]{0,61}[A-Za-z0-9])?$'; then
+    fout "HOSTNAAM: verplicht; letters, cijfers en '-', niet beginnen of eindigen met '-' (max. 63)."
+fi
+if [ -n "$WIFI_NAAM" ]; then
+    n=$(printf '%s' "$WIFI_NAAM" | wc -c)
+    [ "$n" -le 32 ] || fout "WIFI_NAAM: te lang (max. 32 tekens)."
+    n=$(printf '%s' "$WIFI_WACHTWOORD" | wc -c)
+    if ! { [ "$n" -ge 8 ] && [ "$n" -le 63 ]; } &&
+       ! printf '%s' "$WIFI_WACHTWOORD" | grep -Eq '^[0-9A-Fa-f]{64}$'; then
+        fout "WIFI_WACHTWOORD: moet 8 tot 63 tekens zijn."
+    fi
+elif [ -n "$WIFI_WACHTWOORD" ]; then
+    fout "WIFI_NAAM: leeg, maar WIFI_WACHTWOORD is wel ingevuld."
+fi
+if ! printf '%s' "$WIFI_LAND" | grep -Eq '^[A-Z]{2}$' ||
+   { [ -f "$R/usr/share/zoneinfo/iso3166.tab" ] &&
+     ! grep -q "^$WIFI_LAND[[:space:]]" "$R/usr/share/zoneinfo/iso3166.tab"; }; then
+    fout "WIFI_LAND: geen geldige landcode van twee letters (bijv. NL)."
+fi
+if ! printf '%s' "$TIJDZONE" | grep -Eq '^[A-Za-z0-9_+-]+(/[A-Za-z0-9_+-]+)*$' ||
+   [ ! -f "$R/usr/share/zoneinfo/$TIJDZONE" ]; then
+    fout "TIJDZONE: '$TIJDZONE' bestaat niet (bijv. Europe/Amsterdam)."
+fi
+if [ -n "$TS_SLEUTEL" ] && ! printf '%s' "$TS_SLEUTEL" | grep -Eq '^tskey-[A-Za-z0-9-]+$'; then
+    fout "TAILSCALE_SLEUTEL: moet beginnen met 'tskey-'."
+fi
+case "$UITLEG" in ja|nee) ;; *) fout "TOETSENBORD_UITLEG: ja of nee." ;; esac
+
+: > "$RESULTAAT"
+if [ -n "$FOUTEN" ]; then
+    resultaat "CaPuZ-instellingen: FOUT op $(date '+%Y-%m-%d %H:%M'), niets veranderd"
+    resultaat "De installatiewizard start daarom gewoon. Het instellingenbestand"
+    resultaat "is gewist; vul het voorbeeld opnieuw in en flash/start opnieuw."
+    resultaat ""
+    printf '%s' "$FOUTEN" | while IFS= read -r regel; do resultaat "$regel"; done
+    log "fout in instellingen, niets veranderd"
+    exit 0
+fi
+
+# --- 5. Toepassen.
+log "start voor gebruiker $GEBRUIKER, hostnaam $HOSTNAAM"
+doe mkdir -p "$STAAT"
+
+# 5a. Gebruiker pi hernoemen, zoals userconf-pi en de M5Stack-wizard het doen.
+GROEP=$(getent group 1000 2>/dev/null | cut -d: -f1)
+[ -n "$GROEP" ] || GROEP=pi
+doe usermod -l "$GEBRUIKER" pi &&
+doe usermod -m -d "/home/$GEBRUIKER" "$GEBRUIKER" &&
+if [ "$GROEP" = pi ]; then doe groupmod -n "$GEBRUIKER" pi; fi
+OK_GEBRUIKER=$?
+for f in "$R/etc/subuid" "$R/etc/subgid"; do
+    [ -f "$f" ] && doe sed -i "s/^pi:/$GEBRUIKER:/" "$f"
+done
+[ -f "$R/etc/sudoers.d/010_pi-nopasswd" ] &&
+    doe sed -i "s/^pi /$GEBRUIKER /" "$R/etc/sudoers.d/010_pi-nopasswd"
+[ -e "$R/var/lib/systemd/linger/pi" ] &&
+    doe mv "$R/var/lib/systemd/linger/pi" "$R/var/lib/systemd/linger/$GEBRUIKER"
+[ -e "$R/var/lib/AccountsService/users/pi" ] &&
+    doe mv "$R/var/lib/AccountsService/users/pi" "$R/var/lib/AccountsService/users/$GEBRUIKER"
+
+# 5b. Wachtwoord.
+if [ "$OK_GEBRUIKER" -eq 0 ]; then
+    if [ "$DROOG" = 1 ]; then
+        echo "DROOG: chpasswd ($GEBRUIKER, wachtwoord verborgen)"
+        OK_WACHTWOORD=0
+    else
+        printf '%s:%s\n' "$GEBRUIKER" "$WACHTWOORD" | chpasswd
+        OK_WACHTWOORD=$?
+    fi
+else
+    OK_WACHTWOORD=1
+fi
+
+# 5c. Hostnaam.
+printf '%s\n' "$HOSTNAAM" > "$R/etc/hostname"
+if grep -q '^127\.0\.1\.1[[:space:]]' "$R/etc/hosts" 2>/dev/null; then
+    sed -i "s/^127\.0\.1\.1[[:space:]].*/127.0.1.1\t$HOSTNAAM/" "$R/etc/hosts"
+else
+    printf '127.0.1.1\t%s\n' "$HOSTNAAM" >> "$R/etc/hosts"
+fi
+doe hostname "$HOSTNAAM"
+
+# 5d. Tijdzone.
+ln -sf "/usr/share/zoneinfo/$TIJDZONE" "$R/etc/localtime"
+printf '%s\n' "$TIJDZONE" > "$R/etc/timezone"
+
+# 5e. Wifi-land: zonder land staat wifi in dit image uit (rfkill +
+#     NetworkManager). raspi-config regelt beide, zoals de wizard.
+doe raspi-config nonint do_wifi_country "$WIFI_LAND"
+OK_LAND=$?
+
+# 5f. Wifi-netwerk als NetworkManager-profiel (nmcli schrijft het bestand
+#     zonder dat NetworkManager al hoeft te draaien).
+OK_WIFI=0
+if [ -n "$WIFI_NAAM" ]; then
+    PROFIEL="$R/etc/NetworkManager/system-connections/capuz-wifi.nmconnection"
+    if [ "$DROOG" = 1 ]; then
+        echo "DROOG: nmcli --offline connection add type wifi ssid '$WIFI_NAAM' (wachtwoord verborgen) > $PROFIEL"
+    else
+        mkdir -p "$(dirname "$PROFIEL")"
+        ( umask 077
+          nmcli --offline connection add type wifi con-name "$WIFI_NAAM" \
+              ssid "$WIFI_NAAM" wifi-sec.key-mgmt wpa-psk \
+              wifi-sec.psk "$WIFI_WACHTWOORD" connection.autoconnect yes \
+              > "$PROFIEL" ) && chmod 600 "$PROFIEL"
+        OK_WIFI=$?
+        [ "$OK_WIFI" -eq 0 ] || rm -f "$PROFIEL"
+    fi
+fi
+
+# 5g. Tailscale-sleutel bewaren voor capuz-tailscale-koppelen (alleen root).
+if [ -n "$TS_SLEUTEL" ]; then
+    ( umask 077; mkdir -p "$STAAT"; printf '%s\n' "$TS_SLEUTEL" > "$STAAT/tailscale-sleutel" )
+fi
+
+# 5h. Toetsenbord-uitleg van M5Stack overslaan?
+if [ "$UITLEG" = nee ]; then
+    doe rm -f "$R/var/lib/LaunchWizard/run-keyboard-guide"
+fi
+
+sync
+[ "$OK_GEBRUIKER" -eq 0 ] && [ "$DROOG" != 1 ] && date -Iseconds > "$STAAT/voorinstellen.done"
+
+ok() { [ "$1" -eq 0 ] && echo "OK" || echo "MISLUKT"; }
+resultaat "CaPuZ-instellingen toegepast op $(date '+%Y-%m-%d %H:%M')"
+resultaat "(het instellingenbestand met de wachtwoorden is gewist)"
+resultaat ""
+resultaat "Gebruiker   : $GEBRUIKER  [$(ok "$OK_GEBRUIKER")]"
+resultaat "Wachtwoord  : ingesteld  [$(ok "$OK_WACHTWOORD")]"
+resultaat "Hostnaam    : $HOSTNAAM"
+resultaat "Tijdzone    : $TIJDZONE"
+resultaat "Wifi-land   : $WIFI_LAND  [$(ok "$OK_LAND")]"
+if [ -n "$WIFI_NAAM" ]; then
+    resultaat "Wifi        : $WIFI_NAAM  [$(ok "$OK_WIFI")]"
+else
+    resultaat "Wifi        : niet ingesteld"
+fi
+if [ -n "$TS_SLEUTEL" ]; then
+    resultaat "Tailscale   : sleutel ontvangen, koppelen volgt zodra er netwerk is"
+else
+    resultaat "Tailscale   : niet gevraagd (later: sudo tailscale up)"
+fi
+if [ "$OK_GEBRUIKER" -ne 0 ]; then
+    resultaat ""
+    resultaat "Hernoemen mislukt: de installatiewizard start daarom gewoon."
+fi
+log "klaar"
+exit 0

@@ -1,0 +1,37 @@
+#!/bin/sh
+# CaPuZ: Tailscale eenmalig koppelen met de sleutel die capuz-voorinstellen
+# uit capuz-instellingen.txt heeft bewaard. Probeert het een tijd lang (wifi
+# kan even duren, en de wizard herstart de eerste keer). De sleutel wordt
+# daarna altijd gewist, ook als koppelen niet lukt.
+set -u
+
+SLEUTEL=/var/lib/capuz/tailscale-sleutel
+RESULTAAT=/boot/firmware/capuz-instellingen-RESULTAAT.txt
+POGINGEN=30
+
+[ -s "$SLEUTEL" ] || exit 0
+
+draait() {
+    tailscale status --json 2>/dev/null | grep -q '"BackendState": *"Running"'
+}
+
+i=0
+while [ "$i" -lt "$POGINGEN" ]; do
+    draait && break
+    tailscale up --auth-key="file:$SLEUTEL" --timeout=60s && break
+    i=$((i + 1))
+    sleep 20
+done
+
+shred -n 1 -z -u "$SLEUTEL" 2>/dev/null || rm -f "$SLEUTEL"
+sync
+
+if draait; then
+    ip=$(tailscale ip -4 2>/dev/null | head -n 1)
+    printf 'Tailscale   : gekoppeld, adres %s  [OK]\r\n' "$ip" >> "$RESULTAAT"
+    echo "capuz-tailscale-koppelen: gekoppeld ($ip)"
+else
+    printf 'Tailscale   : koppelen MISLUKT, sleutel gewist (later: sudo tailscale up)\r\n' >> "$RESULTAAT"
+    echo "capuz-tailscale-koppelen: mislukt na $POGINGEN pogingen" >&2
+fi
+exit 0

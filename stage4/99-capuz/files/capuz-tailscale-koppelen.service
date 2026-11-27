@@ -1,0 +1,13 @@
+[Unit]
+Description=CaPuZ: Tailscale eenmalig koppelen met de sleutel uit capuz-instellingen.txt
+After=tailscaled.service network-online.target
+Wants=tailscaled.service network-online.target
+ConditionPathExists=/var/lib/capuz/tailscale-sleutel
+
+[Service]
+# Niet "oneshot": dan zou het opstarten wachten op het koppelen.
+Type=exec
+ExecStart=/usr/lib/capuz/capuz-tailscale-koppelen
+
+[Install]
+WantedBy=multi-user.target
