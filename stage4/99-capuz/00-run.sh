@@ -30,6 +30,12 @@ install -d "${ROOTFS_DIR}/etc/systemd/system/multi-user.target.wants"
 ln -sf /usr/lib/systemd/system/capuz-firstboot-cleanup.service \
     "${ROOTFS_DIR}/etc/systemd/system/multi-user.target.wants/capuz-firstboot-cleanup.service"
 
+# 3b. Raspberry Pi-hernoemdialoog (userconfig) nooit starten: die draait
+#     anders onzichtbaar op tty8 en vangt toetsaanslagen op (zie het bestand).
+install -d "${ROOTFS_DIR}/etc/systemd/system/userconfig.service.d"
+install -m 644 files/10-capuz-userconfig-nooit.conf \
+    "${ROOTFS_DIR}/etc/systemd/system/userconfig.service.d/10-capuz-userconfig-nooit.conf"
+
 # 4. Tailscale installeren (nog niet gekoppeld).
 on_chroot << 'CHROOT'
 set -e
