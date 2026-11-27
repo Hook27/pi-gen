@@ -39,6 +39,17 @@ if [ -f /etc/lightdm/lightdm.conf.d/99-cardputerzero-firstboot.conf ]; then
        /etc/lightdm/lightdm.conf.d/99-cardputerzero-firstboot.conf.uit
 fi
 
+# Restanten van rename-user (userconf-pi, bij het maken van het image):
+# zolang lightdm nog automatisch inlogt als rpi-first-boot-wizard én piwiz
+# automatisch start, denkt de M5Stack-wizard dat het apparaat nieuw is en
+# start hij opnieuw de installatiewizard (bijv. na capuz-instellingen.txt).
+rm -f /etc/xdg/autostart/piwiz.desktop
+EERSTE=$(getent passwd 1000 | cut -d: -f1)
+if [ -n "$EERSTE" ] && [ -f /etc/lightdm/lightdm.conf ]; then
+    sed -i "s/^autologin-user=rpi-first-boot-wizard\$/autologin-user=$EERSTE/" \
+        /etc/lightdm/lightdm.conf
+fi
+
 mkdir -p /etc/cloud
 touch /etc/cloud/cloud-init.disabled
 
